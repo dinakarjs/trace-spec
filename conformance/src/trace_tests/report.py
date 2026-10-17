@@ -26,10 +26,12 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from trace_tests import accounting
+from trace_tests.inclusion import InclusionError, canonical_claim_bytes
 from trace_tests.modules.unverified import finding_counts_as_level_failure
 from trace_tests.result import Finding, Status
 
 __all__ = [
+    "LEVEL_MODULES",
     "LEVEL_NAMES",
     "ReportData",
     "badge_svg",
@@ -49,7 +51,7 @@ ACCOUNTING_REPORT_SCHEMA = "agentrust-io/trace-tests/obligation-accounting/1"
 
 #: Modules introduced at each level, for the per-level breakdown.
 LEVEL_MODULES = {
-    0: ("TR-ENV", "TR-SIG", "TR-POL"),
+    0: ("TR-ENV", "TR-SIG", "TR-POL", "TR-APR"),
     1: ("TR-RTE", "TR-SCA"),
     2: ("TR-TXN", "TR-ANC"),
 }
@@ -64,8 +66,7 @@ def record_digest(record: dict[str, Any]) -> str:
     specification, section 0; getting it backwards here would be harmless but
     confusing, so the choice is stated rather than left implicit.
     """
-    canonical = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest()
+    return "sha256:" + hashlib.sha256(canonical_claim_bytes(record)).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ class ReportData:
         top = self.highest_level
         if top is None:
             return "FAIL at Level 0"
-        return f"Level {top} — {LEVEL_NAMES[top]}"
+        return f"Level {top} -- {LEVEL_NAMES[top]}"
 
 
 def _tally(results: dict[str, list[Finding]], level: int) -> tuple[int, int]:
@@ -142,11 +143,19 @@ def _assemble(
     library_version: str | None,
     generated_at: str,
 ) -> ReportData:
-    trace = record.get("trace", record)
+    raw_trace = record.get("trace", record)
+    trace = raw_trace if isinstance(raw_trace, dict) else {}
+    try:
+        digest = record_digest(record)
+    except InclusionError:
+        fallback = json.dumps(
+            record, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=True
+        ).encode("ascii")
+        digest = "sha256:" + hashlib.sha256(fallback).hexdigest()
     return ReportData(
         record_path=record_path,
         record_format=record_format,
-        digest=record_digest(record),
+        digest=digest,
         suite_version=suite_version,
         library_version=library_version,
         generated_at=generated_at,
@@ -497,7 +506,7 @@ def to_html(data: ReportData) -> str:
     anchor = (
         f"<tr><th>Transparency anchor</th><td class='mono'>{e(shown)}</td></tr>"
         if data.transparency
-        else "<tr><th>Transparency anchor</th><td>none — record is unanchored</td></tr>"
+        else "<tr><th>Transparency anchor</th><td>none -- record is unanchored</td></tr>"
     )
 
     lib = e(data.library_version) if data.library_version else "not installed"
@@ -510,7 +519,7 @@ def to_html(data: ReportData) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TRACE Conformance Report — {e(data.verdict)}</title>
+<title>TRACE Conformance Report -- {e(data.verdict)}</title>
 <style>{_CSS}</style></head><body><main>
 <h1>TRACE Conformance Report</h1>
 <p class="sub">Generated {e(data.generated_at)} · suite {e(data.suite_version)}
@@ -540,7 +549,7 @@ def to_html(data: ReportData) -> str:
 <div class="note">
 <strong>This report is not evidence.</strong> It is unsigned HTML describing one run of
 one suite version. The evidence is the Trust Record with the digest above. A reader who
-does not trust whoever sent this should not trust the report either — take the record and
+does not trust whoever sent this should not trust the report either -- take the record and
 run the suite:
 <pre>{reproduce}</pre>
 Compare the digest you compute against the one in this table. If they differ, you are

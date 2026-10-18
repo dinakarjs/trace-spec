@@ -28,14 +28,15 @@ The construction follows [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962) (Cer
 
 An implementer who reasonably assumes JCS at the leaf will produce proofs that never verify, and the failure gives no useful diagnostic: the recomputed root simply differs from the published one, with nothing to indicate why.
 
-The two agree on records whose strings and keys are pure ASCII and whose numbers are integers inside the safe-integer range, which is most records, which is exactly what makes this dangerous. They diverge in four ways:
+The two agree on records whose strings and keys are ASCII other than DEL (`U+007F`) and whose numbers are integers inside the safe-integer range, which is most records, which is exactly what makes this dangerous. They diverge in five ways:
 
+- **ASCII DEL (`U+007F`).** JCS emits DEL itself under [RFC 8785 section 3.2.2.2](https://www.rfc-editor.org/rfc/rfc8785.html#section-3.2.2.2); §1 emits `\u007f`.
 - **Non-ASCII strings.** JCS emits the character; §1 emits a `\uXXXX` escape.
 - **Non-integer numbers.** JCS applies ECMAScript number serialization. §1 excludes non-integer numbers from this profile for that reason.
 - **Integers outside the safe-integer range.** JCS converts a number through an IEEE 754 double, so `9007199254740992` and `9007199254740993` become the same bytes; §1 serializes the digits as written, so they stay distinct. Two implementations of §1 do not even agree with each other here: Python's `json.dumps` writes the exact digits, and a JavaScript implementation of the same five rules goes through `JSON.stringify` and emits one value for both, which is a rug-pull this profile exists to catch going undetected. §1 excludes the range for that reason.
 - **Key order.** JCS sorts by UTF-16 code unit (RFC 8785 §3.2.3); §1 sorts by Unicode code point, which is what Python's `sort_keys=True` does. The two agree across the Basic Multilingual Plane and disagree once a key contains a supplementary-plane character, because surrogates occupy U+D800 to U+DFFF.
 
-Do not "simplify" a verifier by reusing the signing canonicalizer at the leaf. If you do, write a test that anchors a record containing a non-ASCII character and verifies it, which is the test that catches this.
+Do not "simplify" a verifier by reusing the signing canonicalizer at the leaf. If you do, write a test that anchors a record containing DEL or a non-ASCII character and verifies it, which is the test that catches this.
 
 ---
 

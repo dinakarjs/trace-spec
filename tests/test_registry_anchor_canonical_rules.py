@@ -1,4 +1,4 @@
-"""Tests for Registry Anchor Format v1 §1 canonical serialization rules (#536)."""
+"""Tests for Registry Anchor Format v1 §1 canonical serialization rules."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import rfc8785
 
 from agentrust_trace.sign import UnanchorableValue, anchor_bytes
 
@@ -174,7 +175,7 @@ def test_registry_anchor_spec_documents_all_five_canonical_rules() -> None:
 
 
 def test_verifier_compatibility_readme_and_acta_crosswalk_findings_closed() -> None:
-    """#448 items 3 and 16 remain closed in the documentation."""
+    """Profile declarations and external-evidence mappings cite their specifications."""
     readme = (
         REPO_ROOT / "examples" / "verifier-compatibility" / "README.md"
     ).read_text(encoding="utf-8")
@@ -186,5 +187,40 @@ def test_verifier_compatibility_readme_and_acta_crosswalk_findings_closed() -> N
     acta = (
         REPO_ROOT / "docs" / "crosswalks" / "acta-decision-receipts.md"
     ).read_text(encoding="utf-8")
-    assert "3.3.2" not in acta
-    assert "3.3.3" in acta
+    intro = acta.split("## Purpose", 1)[1].split("## What an Acta decision receipt is", 1)[0]
+    assert "external-evidence verification rule in 3.3.2" in intro
+    row = next(line for line in acta.splitlines() if line.startswith("| `receipt.evidence_hash`"))
+    assert "external-evidence-by-digest role 3.3.2" in row
+    assert "3.3.3 builds on that rule" in row
+    assert "#332-external-execution-evidence-optional" in acta
+    assert "#333-action-receipts-for-embodied-workflows-informative" in acta
+
+
+@pytest.mark.parametrize("serialize", SERIALIZERS)
+@pytest.mark.parametrize(
+    ("claim", "jcs", "anchored"),
+    [
+        ({"s": "\x7f"}, b'{"s":"\x7f"}', b'{"s":"\\u007f"}'),
+        ({"\x7f": "v"}, b'{"\x7f":"v"}', b'{"\\u007f":"v"}'),
+    ],
+    ids=["value", "key"],
+)
+def test_ascii_del_distinguishes_signing_and_anchor_bytes(serialize, claim, jcs, anchored):
+    """DEL differs under RFC 8785 even though it is an ASCII code point."""
+    # The accepting twin includes every ASCII code point below DEL, including
+    # the JSON controls that both schemes escape in the same way.
+    ascii_text = "".join(chr(cp) for cp in range(0x7f))
+    same = {ascii_text: ascii_text, "n": 9007199254740991}
+    assert serialize(same) == rfc8785.dumps(same)
+    assert rfc8785.dumps(claim) == jcs
+    assert serialize(claim) == anchored
+    assert anchored != jcs
+
+
+def test_anchor_comparison_text_excludes_ascii_del():
+    """The equality shortcut must exclude the DEL boundary the runtime controls show."""
+    doc = (REPO_ROOT / "spec/registry-anchor-v1.md").read_text(encoding="utf-8")
+    section_0 = doc.split("## 0.", 1)[1].split("## 1.", 1)[0]
+    assert "ASCII other than DEL (`U+007F`)" in section_0
+    assert "JCS emits DEL itself" in section_0
+    assert "§1 emits `\\u007f`" in section_0

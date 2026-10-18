@@ -44,7 +44,7 @@ from tools.acta_receipt_verifier import (
 )
 
 ACTA_DIR = Path(__file__).resolve().parents[1] / "examples" / "action-receipts" / "acta"
-EXPECTED = json.loads((ACTA_DIR / "expected.json").read_text())
+EXPECTED = json.loads((ACTA_DIR / "expected.json").read_text(encoding="utf-8"))
 
 KID = "test:acta-verifier:ed25519"
 SIGNER = Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
@@ -99,10 +99,11 @@ def test_every_fixture_gets_the_verdict_expected_json_declares(name: str) -> Non
     signer = IssuerKey(
         Ed25519PublicKey.from_public_bytes(bytes.fromhex(EXPECTED["signer_public_key_hex"]))
     )
-    envelope = json.loads((ACTA_DIR / name).read_text())
+    envelope = json.loads((ACTA_DIR / name).read_text(encoding="utf-8"))
     predecessor_name = EXPECTED["chain"].get(name)
     predecessor = (
-        json.loads((ACTA_DIR / predecessor_name).read_text()) if predecessor_name else None
+        json.loads((ACTA_DIR / predecessor_name).read_text(encoding="utf-8"))
+        if predecessor_name else None
     )
     assert verify_envelope(envelope, signer, predecessor) == _fixture_verdict(
         EXPECTED["results"][name]
@@ -243,7 +244,7 @@ def _jwks(tmp_path: Path, **window: str) -> Path:
         "x": base64.urlsafe_b64encode(x).decode().rstrip("="),
     }
     path = tmp_path / "jwks.json"
-    path.write_text(json.dumps({"keys": [{**jwk, **window}]}))
+    path.write_text(json.dumps({"keys": [{**jwk, **window}]}), encoding="utf-8")
     return path
 
 
@@ -251,7 +252,7 @@ def _run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], receipt: Any
 ) -> tuple[int, dict[str, Any]]:
     path = tmp_path / "receipt.json"
-    path.write_text(json.dumps(receipt))
+    path.write_text(json.dumps(receipt), encoding="utf-8")
     status = main([str(path)])
     last = capsys.readouterr().out.strip().splitlines()[-1]
     return status, json.loads(last)
@@ -279,9 +280,9 @@ def test_the_command_line_reads_the_predecessor_from_the_context(
 ) -> None:
     first = _sign(_payload())
     first_path = tmp_path / "first.json"
-    first_path.write_text(json.dumps(first))
+    first_path.write_text(json.dumps(first), encoding="utf-8")
     context = tmp_path / "context.json"
-    context.write_text(json.dumps({"chain": [str(first_path)]}))
+    context.write_text(json.dumps({"chain": [str(first_path)]}), encoding="utf-8")
     monkeypatch.setenv("AEV_RECEIPT_JWKS", str(_jwks(tmp_path)))
     monkeypatch.setenv("AEV_RECEIPT_CONTEXT", str(context))
     status, answer = _run(tmp_path, capsys, _sign(_payload()))

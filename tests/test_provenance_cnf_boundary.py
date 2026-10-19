@@ -92,7 +92,7 @@ def test_valid_embedded_cnf_jwk_still_verifies() -> None:
 # remedy after the fact is to revoke the identity.
 # ---------------------------------------------------------------------------
 
-_PRIVATE_JWK_MEMBERS = ["d", "p", "q", "dp", "dq", "qi", "k"]
+_PRIVATE_JWK_MEMBERS = ["d", "p", "q", "dp", "dq", "qi", "oth", "k"]
 
 
 def _jwk_schema():
@@ -121,6 +121,32 @@ def test_schema_still_accepts_an_ordinary_public_jwk() -> None:
 
     assert validator.is_valid({"kty": "OKP", "crv": "Ed25519", "x": "abc"})
     assert validator.is_valid({"kty": "EC", "crv": "P-256", "x": "abc", "y": "def"})
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "schema/trace-claim.json",
+        "schema/trace-claim-v0.3-draft.json",
+        "src/agentrust_trace/schema/trace-v0.2.json",
+        "conformance/schemas/trace-claim.json",
+    ],
+)
+@pytest.mark.parametrize(
+    "other_primes", [None, [], [{"r": "SECRET", "d": "SECRET", "t": "SECRET"}]]
+)
+def test_all_published_jwk_schemas_reject_other_primes(path, other_primes) -> None:
+    import json
+    from pathlib import Path
+
+    import jsonschema
+
+    document = json.loads((Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8"))
+    jwk_schema = document["properties"]["cnf"]["properties"]["jwk"]
+    validator = jsonschema.Draft202012Validator({"$defs": document["$defs"], **jwk_schema})
+    public = {"kty": "RSA", "n": "abc", "e": "AQAB", "public_extension": "kept"}
+    assert validator.is_valid(public)
+    assert not validator.is_valid({**public, "oth": other_primes})
 
 
 @pytest.mark.parametrize("member", _PRIVATE_JWK_MEMBERS)

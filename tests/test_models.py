@@ -188,6 +188,18 @@ def test_jwk_with_private_key_material_rejected() -> None:
         TrustRecord.model_validate(data)
 
 
+@pytest.mark.parametrize(
+    "other_primes", [None, [], [{"r": "SECRET", "d": "SECRET", "t": "SECRET"}]]
+)
+def test_jwk_rejects_other_primes_even_without_a_private_exponent(other_primes) -> None:
+    from agentrust_trace.models import JWK
+
+    public = {"kty": "RSA", "n": "abc", "e": "AQAB", "public_extension": "kept"}
+    assert JWK.model_validate(public).model_extra == {"public_extension": "kept"}
+    with pytest.raises(ValidationError, match="private key material"):
+        JWK.model_validate({**public, "oth": other_primes})
+
+
 def test_delegation_block_parses() -> None:
     data = _load("intel-tdx.json")
     data["delegation"] = {

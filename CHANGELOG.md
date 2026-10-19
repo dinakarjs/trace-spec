@@ -11,6 +11,11 @@ Format: [Semantic Versioning](https://semver.org/). Spec versions follow `MAJOR.
 
 ## [Unreleased]
 
+- Reject the RSA private JWK member `oth` in confirmation keys and trusted
+  verification keys, including the reference model, published schema copies
+  and both conformance envelope/signature checks. The rejection is based on
+  member presence, including null and empty values, per RFC 7518 section 6.3.2.7.
+
 - **Section 3.1.5: a layer is established by its event log or by a reference value
   (#279).** As merged, a layer was `established` only when its event log replayed to the
   quoted value, so a quote that equals signed reference values with no log could not be

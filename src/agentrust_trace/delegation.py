@@ -307,6 +307,10 @@ def _credential_window(hop: Hop) -> bool:
     return not bool(cred["not_before"] <= hop.record["iat"] <= cred["not_after"])
 
 
+def _data_class_unknown(hop: Hop) -> bool:
+    return hop.record["data_class"] not in hop.context["data_class_lattice"]
+
+
 def _data_class_widened(hop: Hop) -> bool:
     if hop.parent is None:
         return False
@@ -322,6 +326,7 @@ def _data_class_widened(hop: Hop) -> bool:
 
 
 RULES: tuple[Rule, ...] = (
+    Rule("data_class_unknown", "warning", "unverifiable", "record", _data_class_unknown),
     Rule(
         "record_signature_invalid",
         "failure",
@@ -510,6 +515,12 @@ def verify_delegation_chain(
     by passing the leaf record dict itself. Raises :class:`DelegationError` when
     the caller's inputs (*records*, *leaf*, *context*, or *rules*) are malformed
     or when *leaf* is not present in *records* under a supported digest algorithm.
+
+    The default rules report an unlisted data classification as unverifiable.
+    ``max_depth`` bounds parent traversal and signature verification, not the
+    initial indexing of ``records``. Callers must bound input count and bytes
+    before supplying an untrusted iterable. A truncated walk does not appraise
+    the unvisited ancestors; its depth is the first refused parent edge.
     """
     if isinstance(records, (str, bytes, bytearray, dict)) or not isinstance(
         records, Iterable
@@ -580,6 +591,13 @@ def verify_delegation_chain(
         found, warned = _evaluate(hop, rule_tuple, "resolve")
         failures += found
         warnings += warned
+
+        # Do not resolve or verify another parent beyond the configured bound.
+        # This also applies when callers customize the appraisal rule set.
+        if depth > validated_context["max_depth"]:
+            if "depth_exceeded" not in failures:
+                failures.append("depth_exceeded")
+            break
 
         parent = None
         if hop.link_algorithm in supported:

@@ -206,3 +206,44 @@ def test_verify_delegation_chain_refuses_malformed_caller_inputs() -> None:
     for bad_rules in ("not-rules", [123]):
         with pytest.raises(mod.DelegationError):
             mod.verify_delegation_chain(records, leaf, context, rules=bad_rules)
+
+
+@pytest.mark.parametrize(
+    ("lattice", "expected"),
+    [
+        (["public", "internal", "confidential", "restricted"], "verified"),
+        (["public"], "unverifiable"),
+        ([], "unverifiable"),
+    ],
+)
+def test_unlisted_classification_never_earns_verified(lattice, expected):
+    vector = _load("01-valid-single-hop.json")
+    vector["context"]["data_class_lattice"] = lattice
+    result = _mod().verify_delegation_chain(
+        vector["records"], vector["context"]["leaf"], vector["context"]
+    )
+    assert result.classification == expected
+    assert ("data_class_unknown" in result.codes) == (expected == "unverifiable")
+
+
+@pytest.mark.parametrize("max_depth", [0, 1, 3, 4])
+def test_depth_limit_bounds_signature_work(monkeypatch, max_depth):
+    mod = _mod()
+    vector = _load("02-valid-full-depth-out-of-order.json")
+    vector["context"]["max_depth"] = max_depth
+    original = mod._signature_invalid
+    checked = []
+
+    def counted(*args, **kwargs):
+        checked.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_signature_invalid", counted)
+    result = mod.verify_delegation_chain(
+        vector["records"], vector["context"]["leaf"], vector["context"]
+    )
+    assert len(checked) == min(max_depth + 1, 5)
+    assert result.classification == (
+        "verified" if max_depth == 4 else "authorization-invalid"
+    )
+    assert ("depth_exceeded" in result.codes) == (max_depth < 4)

@@ -307,15 +307,20 @@ def _credential_window(hop: Hop) -> bool:
     return not bool(cred["not_before"] <= hop.record["iat"] <= cred["not_after"])
 
 
-def _data_class_widened(hop: Hop) -> bool:
+def _data_class_unknown(hop: Hop) -> bool:
     if hop.parent is None:
         return False
     lattice: list[str] = hop.context["data_class_lattice"]
-    if (
+    return (
         hop.record["data_class"] not in lattice
         or hop.parent["data_class"] not in lattice
-    ):
+    )
+
+
+def _data_class_widened(hop: Hop) -> bool:
+    if hop.parent is None or _data_class_unknown(hop):
         return False
+    lattice: list[str] = hop.context["data_class_lattice"]
     return lattice.index(hop.record["data_class"]) > lattice.index(
         hop.parent["data_class"]
     )
@@ -357,6 +362,9 @@ RULES: tuple[Rule, ...] = (
         _credential_holder_mismatch,
     ),
     Rule("credential_window", "failure", "authorization", "link", _credential_window),
+    Rule(
+        "data_class_unknown", "warning", "unverifiable", "link", _data_class_unknown
+    ),
     Rule(
         "data_class_widened", "failure", "authorization", "link", _data_class_widened
     ),

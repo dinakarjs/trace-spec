@@ -11,6 +11,16 @@ Format: [Semantic Versioning](https://semver.org/). Spec versions follow `MAJOR.
 
 ## [Unreleased]
 
+### Added
+
+- **`agentrust_trace.delegation`: Python delegation-link and A2A chain verifier.**
+  Adds `parent_record_hash`, `verify_delegation_link`, `verify_delegation_chain`, and
+  `DelegationError` (`src/agentrust_trace/delegation.py`), matching the section 3.1.3
+  single-hop link contract in `trust-record-verify/src/delegation.ts` and executing the
+  A2A delegation-link verification walk across `examples/delegation-link/`, with unknown
+  data classifications outside `data_class_lattice` reported as `unverifiable`
+  (`data_class_unknown`, vectors 25 and 26) (#581, #588, by @drk-ram).
+
 - **`content_marking`: consumer field and strict UTF-8 / RFC 8259 JSON boundaries.**
   `verify_assertion` now validates `subject` (SPIFFE or DID URI), `eat_profile` (non-empty
   string), and optional `anchor` (non-empty string) on both the assertion and the resolved

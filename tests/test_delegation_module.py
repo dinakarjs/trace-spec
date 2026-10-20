@@ -12,7 +12,7 @@ import pytest
 try:
     from agentrust_trace import delegation as _delegation
 except ImportError:
-    _delegation = None  # type: ignore[assignment]
+    pytest.fail("unimplemented")
 
 VECTOR_DIR = Path(__file__).resolve().parents[1] / "examples" / "delegation-link"
 VECTOR_PATHS = sorted(VECTOR_DIR.glob("*.json"))
@@ -206,3 +206,32 @@ def test_verify_delegation_chain_refuses_malformed_caller_inputs() -> None:
     for bad_rules in ("not-rules", [123]):
         with pytest.raises(mod.DelegationError):
             mod.verify_delegation_chain(records, leaf, context, rules=bad_rules)
+
+
+@pytest.mark.parametrize(
+    ("vector_name", "lattice", "expected"),
+    [
+        (
+            "01-valid-single-hop.json",
+            ["public", "internal", "confidential", "restricted"],
+            "verified",
+        ),
+        ("01-valid-single-hop.json", ["public"], "unverifiable"),
+        ("01-valid-single-hop.json", [], "unverifiable"),
+        ("18-data-class-widened-at-leaf.json", ["public"], "unverifiable"),
+        ("18-data-class-widened-at-leaf.json", ["public", "internal"], "unverifiable"),
+        ("18-data-class-widened-at-leaf.json", ["public", "restricted"], "unverifiable"),
+    ],
+)
+def test_unlisted_data_class_reports_unverifiable_and_never_verified(
+    vector_name: str, lattice: list[str], expected: str
+) -> None:
+    mod = _mod()
+    vector = _load(vector_name)
+    vector["context"]["data_class_lattice"] = lattice
+    result = mod.verify_delegation_chain(
+        vector["records"], vector["context"]["leaf"], vector["context"]
+    )
+    assert result.classification == expected
+    assert ("data_class_unknown" in result.codes) == (expected == "unverifiable")
+

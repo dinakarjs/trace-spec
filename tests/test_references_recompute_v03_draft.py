@@ -86,7 +86,7 @@ def test_v02_rejects_every_shape_the_draft_newly_accepts(references: list) -> No
 
 
 def test_a_resolved_entry_is_accepted_by_both() -> None:
-    """Existing records keep validating: the draft does not narrow what v0.2 accepts."""
+    """The resolver-based shape is accepted under each schema's own profile tag."""
     for name, v03 in (("trace-claim.json", False), ("trace-claim-v0.3-draft.json", True)):
         validator = jsonschema.Draft202012Validator(_schema(name))
         assert not list(validator.iter_errors(_record([RESOLVED], v03=v03))), name

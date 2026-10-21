@@ -25,8 +25,7 @@ def test_parent_record_hash_matches_published_vectors() -> None:
     leaf, parent = vec01["records"][0], vec01["records"][1]
     assert delegation.parent_record_hash(leaf, "sha256") == vec01["context"]["leaf"]
     assert (
-        delegation.parent_record_hash(parent, "sha256")
-        == leaf["delegation"]["parent_record_hash"]
+        delegation.parent_record_hash(parent, "sha256") == leaf["delegation"]["parent_record_hash"]
     )
 
     vec22 = _load("22-leaf-link-uses-sha384.json")
@@ -75,10 +74,7 @@ def test_verify_delegation_link_succeeds_for_sha256_and_sha384() -> None:
     vec22 = _load("22-leaf-link-uses-sha384.json")
     link22 = delegation.verify_delegation_link(vec22["records"][0], vec22["records"][1])
     assert link22.algorithm == "sha384"
-    assert (
-        link22.parent_record_hash
-        == vec22["records"][0]["delegation"]["parent_record_hash"]
-    )
+    assert link22.parent_record_hash == vec22["records"][0]["delegation"]["parent_record_hash"]
 
 
 def test_verify_delegation_link_refuses_absent_malformed_unsupported_or_mismatched() -> None:
@@ -125,6 +121,24 @@ def test_verify_delegation_link_refuses_absent_malformed_unsupported_or_mismatch
     vec05 = _load("05-link-over-signed-body.json")
     with pytest.raises(delegation.DelegationError, match="does not digest"):
         delegation.verify_delegation_link(vec05["records"][0], vec05["records"][1])
+
+
+@pytest.mark.parametrize("algorithm,width", [("sha256", 64), ("sha384", 96)])
+@pytest.mark.parametrize("bad", ["é", "\ud800"])
+def test_verify_delegation_link_refuses_nonascii_digest(
+    algorithm: str, width: int, bad: str
+) -> None:
+    vector = _load("01-valid-single-hop.json")
+    leaf, parent = vector["records"][0], vector["records"][1]
+    child = {
+        **leaf,
+        "delegation": {
+            **leaf["delegation"],
+            "parent_record_hash": algorithm + ":" + bad + "0" * (width - 1),
+        },
+    }
+    with pytest.raises(delegation.DelegationError, match="does not digest"):
+        delegation.verify_delegation_link(child, parent)
 
 
 @pytest.mark.parametrize("path", VECTOR_PATHS, ids=lambda p: p.stem)
@@ -269,15 +283,9 @@ def test_verify_delegation_chain_refuses_non_canonical_signature_and_unknown_mem
         delegation.verify_delegation_chain([mutated_leaf, parent], mutated_leaf, context)
 
     key = generate_key()
-    unsigned = {
-        k: v for k, v in leaf.items() if k not in ("signature", "cnf")
-    }
+    unsigned = {k: v for k, v in leaf.items() if k not in ("signature", "cnf")}
     unsigned["extra_top_level_member"] = "forbidden-by-schema"
     signed_with_extra = sign_record(unsigned, key)
     signed_with_extra["cnf"] = {"jwk": key_to_jwk(key)}
     with pytest.raises(delegation.DelegationError, match="schema"):
-        delegation.verify_delegation_chain(
-            [signed_with_extra, parent], signed_with_extra, context
-        )
-
-
+        delegation.verify_delegation_chain([signed_with_extra, parent], signed_with_extra, context)

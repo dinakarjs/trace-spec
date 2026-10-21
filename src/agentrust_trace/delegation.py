@@ -166,7 +166,7 @@ def verify_delegation_link(
             f"digest algorithm {algorithm!r} is not one this build can compute"
         )
     computed = parent_record_hash(parent, algorithm)
-    if not hmac.compare_digest(computed, stated):
+    if not (stated.isascii() and hmac.compare_digest(computed, stated)):
         raise DelegationError(
             "the candidate parent record does not digest to the value the child commits to"
         )

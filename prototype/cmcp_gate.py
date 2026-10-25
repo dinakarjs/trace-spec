@@ -187,6 +187,11 @@ class CMCPTraceGate:
         nonce = credentials["nonce"]
         if not isinstance(nonce, str) or len(nonce) != 43:
             raise v.ProfileError("nonce_shape")
+        try:
+            if len(self._decode(nonce)) != 32:
+                raise v.ProfileError("nonce_shape")
+        except v.ProfileError as exc:
+            raise v.ProfileError("nonce_shape") from exc
         proof = self._decode(credentials["proof"])
         record = self._store.consume_challenge(nonce)
         if record is None:

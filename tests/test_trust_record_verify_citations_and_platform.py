@@ -177,6 +177,23 @@ out.checks.badCitationResolver = await codeOf(() =>
 out.checks.badPlatformAppraiser = await codeOf(() =>
   trace.verifyRecord({}, { platformAppraiser: 123 })
 );
+out.checks.nonObjectParentRecordHash = await codeOf(() =>
+  trace.parentRecordHash(123)
+);
+out.checks.nonObjectParentDelegationLink = await codeOf(() =>
+  trace.verifyDelegationLink(
+    {
+      delegation: {
+        parent_record_hash: "sha256:" + "a".repeat(64),
+        credential_id: "c1",
+      },
+    },
+    123,
+  )
+);
+out.checks.nonObjectBundleDigest = await codeOf(() =>
+  trace.bundleDigest(123)
+);
 out.checks.nonStringMeasurements = [];
 const badRuntimes = [
   {},
@@ -233,3 +250,11 @@ def test_ts_non_string_or_empty_runtime_measurement_is_field_absent(
     assert ts_results["checks"]["nonStringMeasurements"] == [
         ["not_attempted", "field_absent"]
     ] * 6
+
+
+def test_ts_non_object_inputs_rejected_in_delegation_and_bundle_digest(
+    ts_results: dict[str, Any],
+) -> None:
+    assert ts_results["checks"]["nonObjectParentRecordHash"] == "record_not_object"
+    assert ts_results["checks"]["nonObjectParentDelegationLink"] == "record_not_object"
+    assert ts_results["checks"]["nonObjectBundleDigest"] == "invalid_argument"

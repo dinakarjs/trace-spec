@@ -136,7 +136,7 @@ test("parentRecordHash, verifyDelegationLink and bundleDigest refuse non-object 
 test("checkRevocationBundle and verifyRecord report non-plain bundle objects as bundle_malformed", async () => {
   const examples = join(dirname(dirname(dirname(fileURLToPath(import.meta.url)))), "examples", "revocation-bundle");
   const v01 = JSON.parse(readFileSync(join(examples, "01-fresh-well-inside-both-bounds.json"), "utf8"));
-  const v20 = JSON.parse(readFileSync(join(examples, "20-statement-for-another-log-rejected.json"), "utf8"));
+  const v20 = JSON.parse(readFileSync(join(examples, "20-malformed-statement-on-another-log.json"), "utf8"));
 
   class Bundle {}
   for (const vec of [v01, v20]) {
@@ -156,7 +156,7 @@ test("checkRevocationBundle and verifyRecord report non-plain bundle objects as 
       assert.equal(check.cause, "bundle_malformed");
       assert.equal(check.evidence.path, "/");
 
-      const res = await verifyRecord(vec.record, {
+      const res = await verifyRecord(vec.records[0], {
         trustedKey: vec.context.trusted_key,
         now: vec.context.now,
         maxAgeSeconds: null,

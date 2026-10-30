@@ -440,6 +440,20 @@ def test_authenticode_sha256_rejects_out_of_bounds_header_and_section_table_size
             x.authenticode_sha256(malformed)
 
 
+def test_authenticode_certificate_in_headers_is_an_independent_rejection() -> None:
+    # No sections remain to mask the certificate/header overlap check.
+    image, _ = _build_pe_image(magic=0x20B, section_data=b"")
+    control = bytearray(image)
+    struct.pack_into("<H", control, 0x40 + 6, 0)
+    assert len(control) == 512
+    assert len(x.authenticode_sha256(bytes(control))) == 64
+    cert_entry = 0x40 + 24 + 112 + 8 * 4
+    malformed = bytearray(control)
+    struct.pack_into("<II", malformed, cert_entry, 256, 256)
+    with pytest.raises(ValueError, match="malformed PE image"):
+        x.authenticode_sha256(bytes(malformed))
+
+
 def test_authenticode_sha256_rejects_invalid_certificate_table_bounds() -> None:
     pe64, expected64 = _build_pe_image(magic=0x20B, cert_bytes=b"CERT" * 8)
     assert x.authenticode_sha256(pe64) == expected64

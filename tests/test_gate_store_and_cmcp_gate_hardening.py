@@ -495,3 +495,69 @@ def test_remote_gate_store_rejects_invalid_timeout(bad_timeout: Any) -> None:
     with pytest.raises(ValueError, match="^timeout must be a positive finite number$"):
         RemoteGateStore("127.0.0.1", 9999, BINARY_SECRET, timeout=bad_timeout)
 
+
+
+@pytest.mark.parametrize("expires", [-1, 9_007_199_254_740_992, 1 << 64])
+def test_wire_rejects_expires_independently_of_issued(expires: int, tmp_path: Path) -> None:
+    with _running_server(tmp_path / "expires.sqlite") as server:
+        store = RemoteGateStore("127.0.0.1", int(server.server_address[1]), BINARY_SECRET)
+        with pytest.raises(GateStoreUnavailable, match="malformed"):
+            store.mint_challenge(
+                issuer="iss", token_id="jti", token_digest="sha256:" + "0" * 64,
+                nonce="n" * 43, session_id="s1", action_digest="sha256:" + "1" * 64,
+                issued=0, expires=expires,
+            )
+        # A rejection must not insert a challenge or break the next request.
+        with server.store._connect() as db:
+            assert db.execute("SELECT count(*) FROM challenges").fetchone()[0] == 0
+        assert store.bump_admission("s1", b"tok") == 1
+
+
+@pytest.mark.parametrize("number", [b"1e309", b"-1e309"])
+def test_wire_server_closes_on_overflow_even_in_unused_member(
+    number: bytes, tmp_path: Path
+) -> None:
+    with _running_server(tmp_path / "float.sqlite") as server:
+        port = int(server.server_address[1])
+        payload = (
+            b'{"secret":"' + gate_store._b64(BINARY_SECRET).encode()
+            + b'","op":"admission","args":{"session_id":"s1","unused":'
+            + number + b'}}'
+        )
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as conn:
+            conn.sendall(struct.pack(">I", len(payload)) + payload)
+            assert conn.recv(1) == b""
+        assert RemoteGateStore("127.0.0.1", port, BINARY_SECRET).admission("s1") is None
+
+
+@pytest.mark.parametrize(("payload", "invoke"), [
+    (b'{"ok":null,"unused":1e309}', lambda s: s.admission("s1")),
+    (b'{"ok":null,"unused":-1e309}', lambda s: s.admission("s1")),
+    (b'{"ok":["dG9r",9007199254740992]}', lambda s: s.admission("s1")),
+    (b'{"ok":["sha256:' + b'0' * 64 + b'","s1","sha256:' + b'1' * 64
+     + b'",-1,10]}', lambda s: s.consume_challenge("n" * 43)),
+    (b'{"ok":["sha256:' + b'0' * 64 + b'","s1","sha256:' + b'1' * 64
+     + b'",0,9007199254740992]}', lambda s: s.consume_challenge("n" * 43)),
+    (b'{"ok":["sha256:' + b'0' * 64 + b'","","sha256:' + b'1' * 64
+     + b'",0,10]}', lambda s: s.consume_challenge("n" * 43)),
+])
+def test_wire_client_refuses_invalid_returned_fields(payload: bytes, invoke: Any) -> None:
+    with _raw_reply_server(payload) as port:
+        with pytest.raises(GateStoreUnavailable) as rejected:
+            invoke(RemoteGateStore("127.0.0.1", port, BINARY_SECRET))
+        if b"1e309" in payload:
+            assert isinstance(rejected.value.__cause__, ValueError)
+            assert "non-finite json float" in str(rejected.value.__cause__)
+
+
+def test_wire_client_accepts_boundary_returned_fields() -> None:
+    with _raw_reply_server(b'{"ok":["dG9r",9007199254740991]}') as port:
+        store = RemoteGateStore("127.0.0.1", port, BINARY_SECRET)
+        assert store.admission("s1") == (b"tok", 9_007_199_254_740_991)
+    payload = (b'{"ok":["sha256:' + b'0' * 64 + b'","s1","sha256:' + b'1' * 64
+               + b'",0,9007199254740991]}')
+    with _raw_reply_server(payload) as port:
+        store = RemoteGateStore("127.0.0.1", port, BINARY_SECRET)
+        result = store.consume_challenge("n" * 43)
+        assert result is not None
+        assert (result.issued, result.expires) == (0, 9_007_199_254_740_991)
